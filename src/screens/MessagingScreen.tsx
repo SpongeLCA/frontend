@@ -1,63 +1,61 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, FlatList, TextInput, TouchableOpacity, Image, KeyboardAvoidingView, Platform } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, Image, Dimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useNavigation } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
-import { fakeConversations, Conversation, Message } from '../data/fakeMessages';
+import { fakeProfiles, Profile } from '../data/fakeProfiles';
+import { fakeConversations, Conversation } from '../data/fakeMessages';
+
+const { width } = Dimensions.get('window');
 
 export default function MessagingScreen() {
-  const [conversations, setConversations] = useState<Conversation[]>(fakeConversations);
-  const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
-  const [newMessage, setNewMessage] = useState('');
-  const flatListRef = useRef<FlatList>(null);
+  const navigation = useNavigation();
+  const [onlineProfiles, setOnlineProfiles] = useState<Profile[]>([]);
+  const [conversations, setConversations] = useState<Conversation[]>([]);
 
   useEffect(() => {
-    if (flatListRef.current && selectedConversation) {
-      flatListRef.current.scrollToEnd({ animated: true });
+    console.log('fakeProfiles:', fakeProfiles);
+    console.log('fakeConversations:', fakeConversations);
+
+    if (Array.isArray(fakeProfiles)) {
+      const online = fakeProfiles.filter(profile => profile.isOnline);
+      setOnlineProfiles(online);
+    } else {
+      console.error('fakeProfiles is not an array:', fakeProfiles);
     }
-  }, [selectedConversation]);
 
-  const handleSendMessage = () => {
-    if (newMessage.trim() === '' || !selectedConversation) return;
+    if (Array.isArray(fakeConversations)) {
+      setConversations(fakeConversations);
+    } else {
+      console.error('fakeConversations is not an array:', fakeConversations);
+    }
+  }, []);
 
-    const message: Message = {
-      id: Date.now().toString(),
-      text: newMessage,
-      sender: 'user',
-      timestamp: new Date(),
-    };
-
-    setConversations(prevConversations => 
-      prevConversations.map(conv => 
-        conv.id === selectedConversation.id 
-          ? { ...conv, messages: [...conv.messages, message], unreadCount: 0 }
-          : conv
-      )
-    );
-
-    setSelectedConversation(prev => prev ? {
-      ...prev,
-      messages: [...prev.messages, message],
-      unreadCount: 0,
-    } : null);
-
-    setNewMessage('');
-  };
+  const renderOnlineProfile = ({ item }: { item: Profile }) => (
+    <TouchableOpacity style={styles.onlineProfileItem} onPress={() => navigation.navigate('UserProfile', { userId: item.id })}>
+      <View style={styles.onlineProfileImageContainer}>
+        <Image source={{ uri: item.images[0] }} style={styles.onlineProfileImage} />
+        <View style={styles.onlineIndicator} />
+      </View>
+      <Text style={styles.onlineProfileName} numberOfLines={1}>{item.name}</Text>
+    </TouchableOpacity>
+  );
 
   const renderConversationItem = ({ item }: { item: Conversation }) => (
     <TouchableOpacity
       style={styles.conversationItem}
-      onPress={() => setSelectedConversation(item)}
+      onPress={() => navigation.navigate('Conversation', { conversationId: item.id })}
     >
-      <Image source={{ uri: item.matchProfile.images[0] }} style={styles.avatar} />
+      <View style={styles.avatarContainer}>
+        <Image source={{ uri: item.matchProfile.images[0] }} style={styles.avatar} />
+        {item.matchProfile.isOnline && <View style={styles.onlineIndicator} />}
+      </View>
       <View style={styles.conversationInfo}>
         <Text style={styles.conversationName}>{item.matchProfile.name}</Text>
         <Text style={styles.lastMessage} numberOfLines={1}>
-          {item.messages[item.messages.length - 1].text}
+          {item.messages[item.messages.length - 1]?.text || "Pas de messages"}
         </Text>
       </View>
-      {item.matchProfile.isOnline && (
-        <View style={styles.onlineIndicator} />
-      )}
       {item.unreadCount > 0 && (
         <View style={styles.unreadBadge}>
           <Text style={styles.unreadCount}>{item.unreadCount}</Text>
@@ -66,63 +64,31 @@ export default function MessagingScreen() {
     </TouchableOpacity>
   );
 
-  const renderMessageItem = ({ item }: { item: Message }) => (
-    <View style={[styles.messageContainer, item.sender === 'user' ? styles.userMessage : styles.matchMessage]}>
-      <Text style={styles.messageText}>{item.text}</Text>
-      <Text style={styles.messageTimestamp}>
-        {item.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-      </Text>
-    </View>
-  );
-
   return (
     <SafeAreaView style={styles.container}>
-      {!selectedConversation ? (
-        <View style={styles.conversationList}>
-          <Text style={styles.title}>Messages</Text>
-          <FlatList
-            data={conversations}
-            renderItem={renderConversationItem}
-            keyExtractor={(item) => item.id}
-          />
-        </View>
-      ) : (
-        <KeyboardAvoidingView
-          style={styles.chatContainer}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          keyboardVerticalOffset={Platform.OS === 'ios' ? 60 : 0}
-        >
-          <View style={styles.chatHeader}>
-            <TouchableOpacity onPress={() => setSelectedConversation(null)}>
-              <Feather name="arrow-left" size={24} color="#FFFFFF" />
-            </TouchableOpacity>
-            <Image source={{ uri: selectedConversation.matchProfile.images[0] }} style={styles.chatHeaderAvatar} />
-            <Text style={styles.chatHeaderTitle}>{selectedConversation.matchProfile.name}</Text>
-            {selectedConversation.matchProfile.isOnline && (
-              <View style={styles.chatHeaderOnlineIndicator} />
-            )}
-          </View>
-          <FlatList
-            ref={flatListRef}
-            data={selectedConversation.messages}
-            renderItem={renderMessageItem}
-            keyExtractor={(item) => item.id}
-            contentContainerStyle={styles.messageList}
-          />
-          <View style={styles.inputContainer}>
-            <TextInput
-              style={styles.input}
-              value={newMessage}
-              onChangeText={setNewMessage}
-              placeholder="Tapez votre message..."
-              placeholderTextColor="#999"
-            />
-            <TouchableOpacity style={styles.sendButton} onPress={handleSendMessage}>
-              <Feather name="send" size={24} color="#E50914" />
-            </TouchableOpacity>
-          </View>
-        </KeyboardAvoidingView>
-      )}
+      <View style={styles.header}>
+        <TouchableOpacity onPress={() => navigation.goBack()}>
+          <Feather name="arrow-left" size={24} color="#FFFFFF" />
+        </TouchableOpacity>
+        <Text style={styles.title}>Messages</Text>
+        <View style={{ width: 24 }} />
+      </View>
+      <FlatList
+        data={onlineProfiles}
+        renderItem={renderOnlineProfile}
+        keyExtractor={(item) => item.id}
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={styles.onlineProfilesList}
+        ListEmptyComponent={() => <Text style={styles.emptyListText}>Aucun profil en ligne</Text>}
+      />
+      <FlatList
+        data={conversations}
+        renderItem={renderConversationItem}
+        keyExtractor={(item) => item.id}
+        style={styles.conversationsList}
+        ListEmptyComponent={() => <Text style={styles.emptyListText}>Aucune conversation</Text>}
+      />
     </SafeAreaView>
   );
 }
@@ -132,144 +98,104 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#000000',
   },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#333',
+  },
   title: {
-    fontSize: 24,
+    fontSize: 20,
     fontWeight: 'bold',
     color: '#FFFFFF',
-    marginBottom: 20,
-    paddingHorizontal: 20,
   },
-  conversationList: {
+  onlineProfilesList: {
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#333',
+  },
+  onlineProfileItem: {
+    alignItems: 'center',
+    marginHorizontal: 8,
+    width: 60,
+  },
+  onlineProfileImageContainer: {
+    position: 'relative',
+    marginBottom: 4,
+  },
+  onlineProfileImage: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+  },
+  onlineProfileName: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    textAlign: 'center',
+  },
+  conversationsList: {
     flex: 1,
-    paddingTop: 20,
   },
   conversationItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: '#333',
+  },
+  avatarContainer: {
+    position: 'relative',
+    marginRight: 12,
   },
   avatar: {
     width: 50,
     height: 50,
     borderRadius: 25,
-    marginRight: 15,
+  },
+  onlineIndicator: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: '#4CAF50',
+    borderWidth: 2,
+    borderColor: '#000000',
   },
   conversationInfo: {
     flex: 1,
   },
   conversationName: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: 'bold',
     color: '#FFFFFF',
-    marginBottom: 5,
+    marginBottom: 4,
   },
   lastMessage: {
     fontSize: 14,
     color: '#999',
   },
-  onlineIndicator: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: '#4CAF50',
-    position: 'absolute',
-    bottom: 10,
-    right: 20,
-    borderWidth: 2,
-    borderColor: '#000000',
-  },
   unreadBadge: {
     backgroundColor: '#E50914',
     borderRadius: 12,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    marginLeft: 10,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    marginLeft: 8,
   },
   unreadCount: {
     color: '#FFFFFF',
     fontSize: 12,
     fontWeight: 'bold',
   },
-  chatContainer: {
-    flex: 1,
-  },
-  chatHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 15,
-    borderBottomWidth: 1,
-    borderBottomColor: '#333',
-  },
-  chatHeaderAvatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    marginLeft: 15,
-    marginRight: 10,
-  },
-  chatHeaderTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
-    flex: 1,
-  },
-  chatHeaderOnlineIndicator: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: '#4CAF50',
-    marginLeft: 10,
-  },
-  messageList: {
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-  },
-  messageContainer: {
-    maxWidth: '80%',
-    padding: 10,
-    borderRadius: 20,
-    marginBottom: 10,
-  },
-  userMessage: {
-    alignSelf: 'flex-end',
-    backgroundColor: '#E50914',
-  },
-  matchMessage: {
-    alignSelf: 'flex-start',
-    backgroundColor: '#333',
-  },
-  messageText: {
+  emptyListText: {
     color: '#FFFFFF',
     fontSize: 16,
-  },
-  messageTimestamp: {
-    color: 'rgba(255, 255, 255, 0.6)',
-    fontSize: 12,
-    alignSelf: 'flex-end',
-    marginTop: 5,
-  },
-  inputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderTopWidth: 1,
-    borderTopColor: '#333',
-  },
-  input: {
-    flex: 1,
-    backgroundColor: '#333',
-    borderRadius: 20,
-    paddingHorizontal: 15,
-    paddingVertical: 10,
-    color: '#FFFFFF',
-    marginRight: 10,
-  },
-  sendButton: {
-    padding: 10,
+    textAlign: 'center',
+    marginTop: 20,
   },
 });
