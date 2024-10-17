@@ -10,6 +10,7 @@ import {
   Platform,
   Image,
   ActivityIndicator,
+  Animated,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
@@ -24,6 +25,49 @@ type RootStackParamList = {
 
 type ConversationScreenRouteProp = RouteProp<RootStackParamList, 'Conversation'>;
 
+const AnimatedFlatList = Animated.createAnimatedComponent(FlatList);
+
+const TypingIndicator = () => {
+  const [dot1] = useState(new Animated.Value(0));
+  const [dot2] = useState(new Animated.Value(0));
+  const [dot3] = useState(new Animated.Value(0));
+
+  useEffect(() => {
+    const animateDot = (dot: Animated.Value) => {
+      return Animated.sequence([
+        Animated.timing(dot, { toValue: 1, duration: 400, useNativeDriver: true }),
+        Animated.timing(dot, { toValue: 0, duration: 400, useNativeDriver: true })
+      ]);
+    };
+
+    Animated.loop(
+      Animated.stagger(200, [
+        animateDot(dot1),
+        animateDot(dot2),
+        animateDot(dot3)
+      ])
+    ).start();
+  }, [dot1, dot2, dot3]);
+
+  const dotStyle = (animatedValue: Animated.Value) => ({
+    opacity: animatedValue,
+    transform: [{
+      translateY: animatedValue.interpolate({
+        inputRange: [0, 1],
+        outputRange: [0, -5]
+      })
+    }]
+  });
+
+  return (
+    <View style={styles.typingContainer}>
+      <Animated.View style={[styles.typingDot, dotStyle(dot1)]} />
+      <Animated.View style={[styles.typingDot, dotStyle(dot2)]} />
+      <Animated.View style={[styles.typingDot, dotStyle(dot3)]} />
+    </View>
+  );
+};
+
 export default function ConversationScreen() {
   const navigation = useNavigation();
   const route = useRoute<ConversationScreenRouteProp>();
@@ -31,7 +75,10 @@ export default function ConversationScreen() {
   const [conversation, setConversation] = useState<Conversation | null>(null);
   const [inputText, setInputText] = useState('');
   const [isLoading, setIsLoading] = useState(true);
+  const [isTyping, setIsTyping] = useState(false);
   const flatListRef = useRef<FlatList>(null);
+  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const [fadeAnims, setFadeAnims] = useState<{ [key: string]: Animated.Value }>({});
 
   useEffect(() => {
     const loadConversation = async () => {
@@ -41,6 +88,7 @@ export default function ConversationScreen() {
           const foundConversation = fakeConversations.find(conv => conv.id === conversationId);
           if (foundConversation) {
             setConversation(foundConversation);
+            initializeFadeAnims(foundConversation.messages);
           } else {
             throw new Error('Conversation not found');
           }
@@ -71,23 +119,82 @@ export default function ConversationScreen() {
     loadConversation();
   }, [conversationId, userId]);
 
-  const sendMessage = () => {
-    if (inputText.trim() && conversation) {
+  const initializeFadeAnims = (messages: Message[]) => {
+    const newFadeAnims: { [key: string]: Animated.Value } = {};
+    messages.forEach((message) => {
+      newFadeAnims[message.id] = new Animated.Value(1);
+    });
+    setFadeAnims(newFadeAnims);
+  };
+
+  const sendMessage = (text: string, sender: 'user' | 'match') => {
+    if (text.trim() && conversation) {
       const newMessage: Message = {
         id: Date.now().toString(),
-        text: inputText.trim(),
-        sender: 'user',
+        text: text.trim(),
+        sender,
         timestamp: new Date(),
       };
       setConversation(prev => ({
         ...prev!,
         messages: [...prev!.messages, newMessage],
       }));
-      setInputText('');
+      
+      // Create a new fade animation for the new message
+      const newFadeAnim = new Animated.Value(0);
+      setFadeAnims(prev => ({ ...prev, [newMessage.id]: newFadeAnim }));
+
+      // Trigger fade-in animation for the new message
+      Animated.timing(newFadeAnim, {
+        toValue: 1,
+        duration: 500,
+        useNativeDriver: true,
+      }).start();
+
       setTimeout(() => {
         flatListRef.current?.scrollToEnd({ animated: true });
       }, 100);
     }
+  };
+
+  const handleSendMessage = () => {
+    if (inputText.trim()) {
+      sendMessage(inputText, 'user');
+      setInputText('');
+      setIsTyping(true);
+      
+      // Simulate match typing and responding
+      setTimeout(() => {
+        setIsTyping(false);
+        sendMessage("Je suis ravi(e) de discuter avec vous ! Que pensez-vous de notre match ?", 'match');
+      }, 2000);
+    }
+  };
+
+  const handleInputChange = (text: string) => {
+    setInputText(text);
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+    }
+    typingTimeoutRef.current = setTimeout(() => {
+      setIsTyping(false);
+    }, 1000);
+  };
+
+  const renderMessage = ({ item }: { item: Message }) => {
+    const messageStyle = [
+      styles.messageBubble,
+      item.sender === 'user' ? styles.userMessage : styles.matchMessage,
+    ];
+
+    return (
+      <Animated.View style={[messageStyle, { opacity: fadeAnims[item.id] || 1 }]}>
+        <Text style={styles.messageText}>{item.text}</Text>
+        <Text style={styles.messageTime}>
+          {item.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+        </Text>
+      </Animated.View>
+    );
   };
 
   if (isLoading) {
@@ -122,23 +229,17 @@ export default function ConversationScreen() {
           <View style={styles.headerInfo}>
             <Text style={styles.headerName}>{conversation.matchProfile.name}</Text>
             <Text style={styles.headerStatus}>
-              {conversation.matchProfile.isOnline ? 'En ligne' : 'Hors ligne'}
+              {isTyping ? 'En train d\'écrire...' : (conversation.matchProfile.isOnline ? 'En ligne' : 'Hors ligne')}
             </Text>
           </View>
         </View>
-        <FlatList
+        <AnimatedFlatList
           ref={flatListRef}
           data={conversation.messages}
           keyExtractor={(item) => item.id}
-          renderItem={({ item }) => (
-            <View style={[styles.messageBubble, item.sender === 'user' ? styles.userMessage : styles.matchMessage]}>
-              <Text style={styles.messageText}>{item.text}</Text>
-              <Text style={styles.messageTime}>
-                {item.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-              </Text>
-            </View>
-          )}
+          renderItem={renderMessage}
           contentContainerStyle={styles.messageList}
+          ListFooterComponent={isTyping ? <TypingIndicator /> : null}
         />
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -148,11 +249,11 @@ export default function ConversationScreen() {
           <TextInput
             style={styles.input}
             value={inputText}
-            onChangeText={setInputText}
+            onChangeText={handleInputChange}
             placeholder="Tapez votre message..."
             placeholderTextColor="#999"
           />
-          <TouchableOpacity onPress={sendMessage} style={styles.sendButton}>
+          <TouchableOpacity onPress={handleSendMessage} style={styles.sendButton}>
             <Feather name="send" size={24} color="#FFFFFF" />
           </TouchableOpacity>
         </KeyboardAvoidingView>
@@ -280,5 +381,18 @@ const styles = StyleSheet.create({
     color: '#E50914',
     fontSize: 16,
     fontWeight: 'bold',
+  },
+  typingContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 8,
+  },
+  typingDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#E50914',
+    marginHorizontal: 2,
   },
 });

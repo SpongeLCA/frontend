@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Image } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Image, Animated } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
@@ -41,6 +41,15 @@ export default function QuizDetailScreen() {
   const [selectedAnswer, setSelectedAnswer] = useState<string | null>(null);
   const [score, setScore] = useState(0);
   const [quizCompleted, setQuizCompleted] = useState(false);
+  const [fadeAnim] = useState(new Animated.Value(0));
+
+  useEffect(() => {
+    Animated.timing(fadeAnim, {
+      toValue: 1,
+      duration: 500,
+      useNativeDriver: true,
+    }).start();
+  }, [currentQuestionIndex, quizCompleted]);
 
   const handleAnswerSelection = (answer: string) => {
     setSelectedAnswer(answer);
@@ -54,6 +63,7 @@ export default function QuizDetailScreen() {
     if (currentQuestionIndex < quizQuestions.length - 1) {
       setCurrentQuestionIndex(currentQuestionIndex + 1);
       setSelectedAnswer(null);
+      fadeAnim.setValue(0);
     } else {
       setQuizCompleted(true);
     }
@@ -61,62 +71,68 @@ export default function QuizDetailScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Feather name="arrow-left" size={24} color="#FFFFFF" />
-        </TouchableOpacity>
-        <Text style={styles.title}>{item.title}</Text>
-        <View style={{ width: 24 }} />
-      </View>
-      <ScrollView style={styles.content}>
-        <Image source={{ uri: item.image }} style={styles.quizImage} />
-        <Text style={styles.description}>{item.description}</Text>
-        {!quizCompleted ? (
-          <View style={styles.questionContainer}>
-            <Text style={styles.questionText}>{quizQuestions[currentQuestionIndex].question}</Text>
-            {quizQuestions[currentQuestionIndex].options.map((option, index) => (
+      <LinearGradient
+        colors={['#1a1a1a', '#141414']}
+        style={styles.gradient}
+      >
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => navigation.goBack()}>
+            <Feather name="arrow-left" size={24} color="#E50914" />
+          </TouchableOpacity>
+          <Text style={styles.title}>{item.title}</Text>
+          <View style={{ width: 24 }} />
+        </View>
+        <ScrollView style={styles.content}>
+          <Image source={{ uri: item.image }} style={styles.quizImage} />
+          <Text style={styles.description}>{item.description}</Text>
+          {!quizCompleted ? (
+            <Animated.View style={[styles.questionContainer, { opacity: fadeAnim }]}>
+              <Text style={styles.questionText}>{quizQuestions[currentQuestionIndex].question}</Text>
+              {quizQuestions[currentQuestionIndex].options.map((option, index) => (
+                <TouchableOpacity
+                  key={index}
+                  style={[
+                    styles.optionButton,
+                    selectedAnswer === option && styles.selectedOptionButton,
+                  ]}
+                  onPress={() => handleAnswerSelection(option)}
+                >
+                  <Text style={[
+                    styles.optionText,
+                    selectedAnswer === option && styles.selectedOptionText,
+                  ]}>{option}</Text>
+                </TouchableOpacity>
+              ))}
               <TouchableOpacity
-                key={index}
-                style={[
-                  styles.optionButton,
-                  selectedAnswer === option && styles.selectedOptionButton,
-                ]}
-                onPress={() => handleAnswerSelection(option)}
+                style={[styles.nextButton, !selectedAnswer && styles.disabledButton]}
+                onPress={handleNextQuestion}
+                disabled={!selectedAnswer}
               >
-                <Text style={[
-                  styles.optionText,
-                  selectedAnswer === option && styles.selectedOptionText,
-                ]}>{option}</Text>
+                <Text style={styles.nextButtonText}>
+                  {currentQuestionIndex === quizQuestions.length - 1 ? 'Terminer' : 'Question suivante'}
+                </Text>
               </TouchableOpacity>
-            ))}
-            <TouchableOpacity
-              style={[styles.nextButton, !selectedAnswer && styles.disabledButton]}
-              onPress={handleNextQuestion}
-              disabled={!selectedAnswer}
-            >
-              <Text style={styles.nextButtonText}>
-                {currentQuestionIndex === quizQuestions.length - 1 ? 'Terminer' : 'Question suivante'}
-              </Text>
-            </TouchableOpacity>
-          </View>
-        ) : (
-          <View style={styles.resultContainer}>
-            <Text style={styles.resultText}>Quiz terminé !</Text>
-            <Text style={styles.scoreText}>Votre score : {score}/{quizQuestions.length}</Text>
-            <TouchableOpacity
-              style={styles.restartButton}
-              onPress={() => {
-                setCurrentQuestionIndex(0);
-                setSelectedAnswer(null);
-                setScore(0);
-                setQuizCompleted(false);
-              }}
-            >
-              <Text style={styles.restartButtonText}>Recommencer le quiz</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-      </ScrollView>
+            </Animated.View>
+          ) : (
+            <Animated.View style={[styles.resultContainer, { opacity: fadeAnim }]}>
+              <Text style={styles.resultText}>Quiz terminé !</Text>
+              <Text style={styles.scoreText}>Votre score : {score}/{quizQuestions.length}</Text>
+              <TouchableOpacity
+                style={styles.restartButton}
+                onPress={() => {
+                  setCurrentQuestionIndex(0);
+                  setSelectedAnswer(null);
+                  setScore(0);
+                  setQuizCompleted(false);
+                  fadeAnim.setValue(0);
+                }}
+              >
+                <Text style={styles.restartButtonText}>Recommencer le quiz</Text>
+              </TouchableOpacity>
+            </Animated.View>
+          )}
+        </ScrollView>
+      </LinearGradient>
     </SafeAreaView>
   );
 }
@@ -124,7 +140,9 @@ export default function QuizDetailScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#141414',
+  },
+  gradient: {
+    flex: 1,
   },
   header: {
     flexDirection: 'row',
@@ -154,25 +172,30 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#CCCCCC',
     marginBottom: 24,
+    lineHeight: 24,
   },
   questionContainer: {
     marginBottom: 24,
   },
   questionText: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: 'bold',
     color: '#FFFFFF',
-    marginBottom: 16,
+    marginBottom: 20,
+    lineHeight: 28,
   },
   optionButton: {
-    backgroundColor: '#2A2A2A',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    paddingVertical: 14,
+    paddingHorizontal: 18,
     borderRadius: 8,
     marginBottom: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
   },
   selectedOptionButton: {
-    backgroundColor: '#E50914',
+    backgroundColor: 'rgba(229, 9, 20, 0.2)',
+    borderColor: '#E50914',
   },
   optionText: {
     fontSize: 16,
@@ -183,11 +206,11 @@ const styles = StyleSheet.create({
   },
   nextButton: {
     backgroundColor: '#E50914',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
+    paddingVertical: 14,
+    paddingHorizontal: 18,
     borderRadius: 8,
     alignItems: 'center',
-    marginTop: 16,
+    marginTop: 20,
   },
   disabledButton: {
     opacity: 0.5,
@@ -199,22 +222,25 @@ const styles = StyleSheet.create({
   },
   resultContainer: {
     alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderRadius: 12,
+    padding: 24,
   },
   resultText: {
-    fontSize: 24,
+    fontSize: 28,
     fontWeight: 'bold',
-    color: '#FFFFFF',
+    color: '#E50914',
     marginBottom: 16,
   },
   scoreText: {
-    fontSize: 18,
-    color: '#CCCCCC',
+    fontSize: 20,
+    color: '#FFFFFF',
     marginBottom: 24,
   },
   restartButton: {
     backgroundColor: '#E50914',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
+    paddingVertical: 14,
+    paddingHorizontal: 24,
     borderRadius: 8,
   },
   restartButtonText: {
