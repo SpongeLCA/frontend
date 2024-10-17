@@ -1,4 +1,5 @@
-import { Profile } from './fakeProfiles';
+import { Profile, currentUser, fakeProfiles } from './fakeProfiles';
+import { fakeMatches } from './fakeInteractions';
 
 export interface Message {
   id: string;
@@ -14,119 +15,78 @@ export interface Conversation {
   unreadCount: number;
 }
 
-export const fakeConversations: Conversation[] = [
-  {
-    id: '1',
-    matchProfile: {
+const createFakeMessages = (matchProfile: Profile): Message[] => {
+  const messages: Message[] = [
+    {
+      id: '1',
+      text: `Bonjour ${matchProfile.name} ! J'ai vu que vous venez de ${matchProfile.originCountry}. Comment trouvez-vous la France jusqu'à présent ?`,
+      sender: 'user',
+      timestamp: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000),
+    },
+    {
       id: '2',
-      name: 'Sophie',
-      age: 28,
-      images: [
-        'https://images.unsplash.com/photo-1494790108377-be9c29b29330?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=687&q=80',
-        'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=687&q=80',
-      ],
-      bio: "Passionnée de voyages et de photographie. J'adore découvrir de nouvelles cultures et langues.",
-      languages: [
-        { language: 'Français', level: 'Natif' },
-        { language: 'Anglais', level: 'Courant' },
-        { language: 'Espagnol', level: 'Intermédiaire' },
-      ],
-      interests: ['Voyages', 'Photographie', 'Cuisine', 'Randonnée'],
-      isOnline: true,
-      isPremium: false,
+      text: `Bonjour ${currentUser.name} ! La France est magnifique, j'adore découvrir la culture et la langue. C'est très différent de ${matchProfile.originCountry} !`,
+      sender: 'match',
+      timestamp: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000),
     },
-    messages: [
-      {
-        id: '1',
-        text: 'Salut ! J\'ai vu que tu aimais voyager. Quel est ton pays préféré jusqu\'à présent ?',
-        sender: 'user',
-        timestamp: new Date('2023-05-10T10:00:00Z'),
-      },
-      {
-        id: '2',
-        text: 'Bonjour ! Mon pays préféré est le Japon. J\'adore leur culture et leur cuisine. Et toi ?',
-        sender: 'match',
-        timestamp: new Date('2023-05-10T10:05:00Z'),
-      },
-      {
-        id: '3',
-        text: 'Le Japon est magnifique ! J\'ai adoré l\'Italie pour sa nourriture et son histoire. Tu parles japonais ?',
-        sender: 'user',
-        timestamp: new Date('2023-05-10T10:10:00Z'),
-      },
-    ],
-    unreadCount: 1,
-  },
-  {
-    id: '2',
-    matchProfile: {
+    {
       id: '3',
-      name: 'Thomas',
-      age: 32,
-      images: [
-        'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=687&q=80',
-        'https://images.unsplash.com/photo-1488161628813-04466f872be2?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=764&q=80',
-      ],
-      bio: "Ingénieur en informatique et musicien amateur. Je cherche quelqu'un pour partager ma passion pour la technologie et la musique.",
-      languages: [
-        { language: 'Français', level: 'Natif' },
-        { language: 'Anglais', level: 'Courant' },
-        { language: 'Allemand', level: 'Débutant' },
-      ],
-      interests: ['Musique', 'Technologie', 'Cinéma', 'Jeux vidéo'],
-      isOnline: false,
-      isPremium: true,
+      text: `Je suis ravi(e) que vous appréciez votre séjour ! Avez-vous déjà eu l'occasion de visiter ${matchProfile.destinationCity} ?`,
+      sender: 'user',
+      timestamp: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000),
     },
-    messages: [
-      {
-        id: '1',
-        text: 'Salut Thomas ! J\'ai vu que tu étais musicien. Quel instrument joues-tu ?',
-        sender: 'user',
-        timestamp: new Date('2023-05-09T18:00:00Z'),
-      },
-      {
-        id: '2',
-        text: 'Salut ! Je joue de la guitare et un peu de piano. Et toi, tu es musicien aussi ?',
-        sender: 'match',
-        timestamp: new Date('2023-05-09T18:10:00Z'),
-      },
-    ],
-    unreadCount: 0,
-  },
-  {
-    id: '3',
-    matchProfile: {
-      id: '5',
-      name: 'Chloé',
-      age: 27,
-      images: [
-        'https://images.unsplash.com/photo-1488426862026-3ee34a7d66df?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=687&q=80',
-        'https://images.unsplash.com/photo-1499952127939-9bbf5af6c51c?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1176&q=80',
-      ],
-      bio: "Professeure de yoga et adepte de la méditation. À la recherche d'une âme sereine pour partager des moments de zen.",
-      languages: [
-        { language: 'Français', level: 'Natif' },
-        { language: 'Anglais', level: 'Courant' },
-        { language: 'Hindi', level: 'Intermédiaire' },
-      ],
-      interests: ['Yoga', 'Méditation', 'Cuisine végétarienne', 'Écologie'],
-      isOnline: true,
-      isPremium: false,
+    {
+      id: '4',
+      text: `Oui, j'ai commencé à explorer ${matchProfile.destinationCity} et c'est vraiment une ville fascinante. J'aimerais en découvrir plus sur la culture locale. Auriez-vous des recommandations ?`,
+      sender: 'match',
+      timestamp: new Date(Date.now() - 12 * 60 * 60 * 1000),
     },
-    messages: [
-      {
-        id: '1',
-        text: 'Bonjour Chloé ! J\'aimerais commencer le yoga. As-tu des conseils pour les débutants ?',
-        sender: 'user',
-        timestamp: new Date('2023-05-11T09:00:00Z'),
-      },
-      {
-        id: '2',
-        text: 'Bonjour ! C\'est génial que tu veuilles commencer le yoga. Je te conseille de commencer par des cours pour débutants et de te concentrer sur la respiration. As-tu déjà pratiqué une activité similaire ?',
-        sender: 'match',
-        timestamp: new Date('2023-05-11T09:15:00Z'),
-      },
-    ],
-    unreadCount: 1,
-  },
+  ];
+
+  return messages;
+};
+
+// Créer seulement trois conversations
+const conversationProfiles = fakeProfiles.slice(0, 3);
+export const fakeConversations: Conversation[] = conversationProfiles.map(profile => ({
+  id: profile.id,
+  matchProfile: profile,
+  messages: createFakeMessages(profile),
+  unreadCount: Math.floor(Math.random() * 3),
+}));
+
+// Créer des correspondants sans conversation
+const allMatchIds = new Set(fakeMatches.flat());
+const conversationProfileIds = new Set(conversationProfiles.map(profile => profile.id));
+export const matchesWithoutConversation: Profile[] = fakeProfiles.filter(profile => 
+  allMatchIds.has(profile.id) && !conversationProfileIds.has(profile.id)
+);
+
+// Combiner les conversations et les correspondants sans conversation
+export const allMatches: (Conversation | Profile)[] = [
+  ...fakeConversations,
+  ...matchesWithoutConversation
 ];
+
+// Fonction utilitaire pour déterminer si un élément est une conversation ou un profil
+export const isConversation = (item: Conversation | Profile): item is Conversation => {
+  return 'messages' in item;
+};
+
+// Fonction utilitaire pour trier les matchs (conversations en premier, puis par date du dernier message ou par nom)
+export const sortMatches = (a: Conversation | Profile, b: Conversation | Profile): number => {
+  if (isConversation(a) && isConversation(b)) {
+    const lastMessageA = a.messages[a.messages.length - 1];
+    const lastMessageB = b.messages[b.messages.length - 1];
+    return lastMessageB.timestamp.getTime() - lastMessageA.timestamp.getTime();
+  } else if (isConversation(a)) {
+    return -1;
+  } else if (isConversation(b)) {
+    return 1;
+  } else {
+    return a.name.localeCompare(b.name);
+  }
+};
+
+// Trier les matchs
+allMatches.sort(sortMatches);

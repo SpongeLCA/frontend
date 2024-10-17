@@ -1,37 +1,91 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Dimensions, FlatList } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Dimensions, FlatList, RefreshControl, Animated } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
-import { fakeProfiles, Profile } from '../data/fakeProfiles';
-import { fakeConversations, Conversation } from '../data/fakeMessages';
+import { LinearGradient } from 'expo-linear-gradient';
+import { BlurView } from 'expo-blur';
+import { Profile } from '../data/fakeProfiles';
+import { Conversation } from '../data/fakeMessages';
+import { featuredProfiles, recentMatches } from '../data/fakeRecommendations';
+import { fakeConversations } from '../data/fakeMessages';
 
 const { width } = Dimensions.get('window');
 const cardWidth = width * 0.8;
 
 const OnlineIndicator = () => (
-  <View style={styles.onlineIndicatorContainer}>
+  <LinearGradient
+    colors={['#4CAF50', '#45a049']}
+    start={{ x: 0, y: 0 }}
+    end={{ x: 1, y: 0 }}
+    style={styles.onlineIndicatorContainer}
+  >
     <View style={styles.onlineIndicator} />
     <Text style={styles.onlineText}>En ligne</Text>
-  </View>
+  </LinearGradient>
 );
 
-const ProfileCard = ({ profile, onPress }: { profile: Profile; onPress: () => void }) => (
-  <TouchableOpacity style={styles.profileCard} onPress={onPress}>
-    <Image source={{ uri: profile.images[0] }} style={styles.profileImage} />
-    <View style={styles.profileOverlay}>
-      <Text style={styles.profileName}>{profile.name}, {profile.age}</Text>
-      <Text style={styles.profileLanguage}>{profile.languages[0]?.language || 'Langue non spécifiée'}</Text>
-      {profile.isPremium && (
-        <View style={styles.premiumBadge}>
-          <Feather name="star" size={12} color="#FFD700" />
-          <Text style={styles.premiumText}>Premium</Text>
-        </View>
-      )}
-      {profile.isOnline && <OnlineIndicator />}
-    </View>
-  </TouchableOpacity>
-);
+const ProfileCard = ({ profile, onPress }: { profile: Profile; onPress: () => void }) => {
+  const [scaleAnim] = useState(new Animated.Value(0.95));
+
+  const handlePressIn = () => {
+    Animated.spring(scaleAnim, {
+      toValue: 1,
+      friction: 5,
+      tension: 40,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const handlePressOut = () => {
+    Animated.spring(scaleAnim, {
+      toValue: 0.95,
+      friction: 5,
+      tension: 40,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      onPressIn={handlePressIn}
+      onPressOut={handlePressOut}
+      activeOpacity={1}
+    >
+      <Animated.View style={[styles.profileCard, { transform: [{ scale: scaleAnim }] }]}>
+        <Image source={{ uri: profile.images[0] }} style={styles.profileImage} />
+        <LinearGradient
+          colors={['transparent', 'rgba(0,0,0,0.8)']}
+          style={styles.profileOverlay}
+        >
+          <Text style={styles.profileName}>{profile.name}, {profile.age}</Text>
+          <Text style={styles.profileLanguage}>
+            {profile.languages[0]?.language || 'Langue non spécifiée'}
+          </Text>
+          <Text style={styles.profileInfo}>
+            {profile.originCountry} → {profile.destinationCity}
+          </Text>
+          <Text style={styles.profileInterests}>
+            {profile.culturalInterests.join(' • ')}
+          </Text>
+          {profile.isPremium && (
+            <LinearGradient
+              colors={['#FFD700', '#FFA500']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.premiumBadge}
+            >
+              <Feather name="star" size={12} color="#FFFFFF" />
+              <Text style={styles.premiumText}>Premium</Text>
+            </LinearGradient>
+          )}
+          {profile.isOnline && <OnlineIndicator />}
+        </LinearGradient>
+      </Animated.View>
+    </TouchableOpacity>
+  );
+};
 
 const MessagePreview = ({ conversation, onPress }: { conversation: Conversation; onPress: () => void }) => (
   <TouchableOpacity style={styles.messagePreview} onPress={onPress}>
@@ -39,117 +93,158 @@ const MessagePreview = ({ conversation, onPress }: { conversation: Conversation;
     <View style={styles.messageContent}>
       <Text style={styles.messageName}>{conversation.matchProfile.name}</Text>
       <Text style={styles.messageText} numberOfLines={1}>
-        {conversation.messages[conversation.messages.length - 1].text}
+        {conversation.messages[conversation.messages.length - 1]?.text || ''}
       </Text>
     </View>
     {conversation.matchProfile.isOnline && <View style={styles.messageOnlineIndicator} />}
+    {conversation.unreadCount > 0 && (
+      <View style={styles.unreadBadge}>
+        <Text style={styles.unreadCount}>{conversation.unreadCount}</Text>
+      </View>
+    )}
+  </TouchableOpacity>
+);
+
+const ToolbarButton = ({ icon, label, onPress, isActive }) => (
+  <TouchableOpacity style={styles.toolbarButton} onPress={onPress}>
+    <LinearGradient
+      colors={isActive ? ['#E50914', '#B20710'] : ['#333333', '#222222']}
+      style={styles.toolbarButtonGradient}
+    >
+      <Feather name={icon} size={24} color="#FFFFFF" />
+    </LinearGradient>
+    <Text style={[styles.toolbarButtonLabel, isActive && styles.toolbarButtonLabelActive]}>{label}</Text>
   </TouchableOpacity>
 );
 
 export default function HomeScreen() {
   const navigation = useNavigation();
-  const [featuredProfiles, setFeaturedProfiles] = useState<Profile[]>([]);
-  const [recentMatches, setRecentMatches] = useState<Profile[]>([]);
-  const [recentMessages, setRecentMessages] = useState<Conversation[]>([]);
+  const [featuredProfilesState, setFeaturedProfilesState] = useState<Profile[]>([]);
+  const [recentMatchesProfilesState, setRecentMatchesProfilesState] = useState<Profile[]>([]);
+  const [recentMessagesState, setRecentMessagesState] = useState<Conversation[]>([]);
+  const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
-    if (fakeProfiles && fakeProfiles.length > 0) {
-      const updatedProfiles = fakeProfiles.map(profile => ({
-        ...profile,
-        isOnline: Math.random() < 0.3
-      }));
-      setFeaturedProfiles(updatedProfiles.slice(0, 5));
-      setRecentMatches(updatedProfiles.slice(5, 15));
-    }
+    loadData();
+  }, []);
 
-    if (fakeConversations && fakeConversations.length > 0) {
-      const sortedConversations = [...fakeConversations].sort((a, b) => {
-        const aTimestamp = a.messages[a.messages.length - 1].timestamp.getTime();
-        const bTimestamp = b.messages[b.messages.length - 1].timestamp.getTime();
-        return bTimestamp - aTimestamp;
-      });
-      setRecentMessages(sortedConversations.slice(0, 3));
-    }
+  const loadData = () => {
+    setFeaturedProfilesState(featuredProfiles || []);
+    setRecentMatchesProfilesState(recentMatches || []);
+    setRecentMessagesState(fakeConversations || []);
+  };
+
+  const onRefresh = React.useCallback(() => {
+    setRefreshing(true);
+    loadData();
+    setTimeout(() => {
+      setRefreshing(false);
+    }, 2000);
   }, []);
 
   const navigateToConversation = (conversationId: string) => {
     navigation.navigate('Conversation', { conversationId });
   };
 
-  if (featuredProfiles.length === 0) {
-    return (
-      <SafeAreaView style={styles.container}>
-        <Text style={styles.loadingText}>Chargement des profils...</Text>
-      </SafeAreaView>
-    );
-  }
+  const navigateToMatching = () => {
+    navigation.navigate('Matching');
+  };
+
+  const navigateToMessaging = () => {
+    navigation.navigate('Messaging');
+  };
+
+  const navigateToLearning = () => {
+    navigation.navigate('Learning');
+  };
+
+  const navigateToProfile = () => {
+    navigation.navigate('Profile');
+  };
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView>
-        <View style={styles.header}>
+      <ScrollView
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#E50914" />
+        }
+      >
+        <LinearGradient
+          colors={['#1a1a1a', '#000000']}
+          style={styles.header}
+        >
           <Text style={styles.logo}>Speak<Text style={styles.logoAccent}>Date</Text></Text>
-          <TouchableOpacity onPress={() => navigation.navigate('Profile')}>
-            <Feather name="user" size={24} color="#FFFFFF" />
-          </TouchableOpacity>
-        </View>
+        </LinearGradient>
 
         <Text style={styles.sectionTitle}>Profils en vedette</Text>
-        <FlatList
-          data={featuredProfiles}
-          renderItem={({ item }) => (
-            <ProfileCard
-              profile={item}
-              onPress={() => navigation.navigate('Profile', { profileId: item.id })}
-            />
-          )}
-          keyExtractor={(item) => item.id}
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={styles.featuredContainer}
-        />
-
-        <Text style={styles.sectionTitle}>Messages récents</Text>
-        {recentMessages.map((conversation) => (
-          <MessagePreview
-            key={conversation.id}
-            conversation={conversation}
-            onPress={() => navigateToConversation(conversation.id)}
+        {featuredProfilesState.length > 0 ? (
+          <FlatList
+            data={featuredProfilesState}
+            renderItem={({ item }) => (
+              <ProfileCard
+                profile={item}
+                onPress={() => navigation.navigate('UserProfile', { userId: item.id })}
+              />
+            )}
+            keyExtractor={(item) => item.id}
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.featuredContainer}
+            snapToInterval={cardWidth + 16}
+            decelerationRate="fast"
           />
-        ))}
+        ) : (
+          <BlurView intensity={80} tint="dark" style={styles.noContentContainer}>
+            <Text style={styles.noContentText}>
+              Aucun profil en vedette pour le moment. Continuez à explorer et à interagir avec de nouveaux profils !
+            </Text>
+          </BlurView>
+        )}
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Derniers messages</Text>
+          {recentMessagesState.slice(0, 3).map((conversation) => (
+            <MessagePreview
+              key={conversation.id}
+              conversation={conversation}
+              onPress={() => navigateToConversation(conversation.id)}
+            />
+          ))}
+        </View>
 
         <Text style={styles.sectionTitle}>Vos matchs récents</Text>
-        <FlatList
-          data={recentMatches}
-          renderItem={({ item }) => (
-            <ProfileCard
-              profile={item}
-              onPress={() => navigation.navigate('Profile', { profileId: item.id })}
-            />
-          )}
-          keyExtractor={(item) => item.id}
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={styles.matchesContainer}
-        />
-
-        <View style={styles.actionButtons}>
-          <TouchableOpacity
-            style={[styles.actionButton, styles.swipeButton]}
-            onPress={() => navigation.navigate('Matching')}
-          >
-            <Feather name="heart" size={24} color="#FFFFFF" />
-            <Text style={styles.actionButtonText}>Swiper</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.actionButton, styles.messagesButton]}
-            onPress={() => navigation.navigate('Messaging')}
-          >
-            <Feather name="message-square" size={24} color="#FFFFFF" />
-            <Text style={styles.actionButtonText}>Messages</Text>
-          </TouchableOpacity>
-        </View>
+        {recentMatchesProfilesState.length > 0 ? (
+          <FlatList
+            data={recentMatchesProfilesState}
+            renderItem={({ item }) => (
+              <ProfileCard
+                profile={item}
+                onPress={() => navigation.navigate('UserProfile', { userId: item.id })}
+              />
+            )}
+            keyExtractor={(item) => item.id}
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.matchesContainer}
+            snapToInterval={cardWidth + 16}
+            decelerationRate="fast"
+          />
+        ) : (
+          <BlurView intensity={80} tint="dark" style={styles.noContentContainer}>
+            <Text style={styles.noContentText}>
+              Aucun match récent. Continuez à explorer de nouveaux profils !
+            </Text>
+          </BlurView>
+        )}
       </ScrollView>
+
+      <BlurView intensity={100} tint="dark" style={styles.toolbar}>
+        <ToolbarButton icon="home" label="Accueil" onPress={() => {}} isActive={true} />
+        <ToolbarButton icon="heart" label="Swiper" onPress={navigateToMatching} isActive={false} />
+        <ToolbarButton icon="message-square" label="Messages" onPress={navigateToMessaging} isActive={false} />
+        <ToolbarButton icon="book-open" label="Apprendre" onPress={navigateToLearning} isActive={false} />
+        <ToolbarButton icon="user" label="Profil" onPress={navigateToProfile} isActive={false} />
+      </BlurView>
     </SafeAreaView>
   );
 }
@@ -164,9 +259,11 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#333',
   },
   logo: {
-    fontSize: 24,
+    fontSize: 28,
     fontWeight: 'bold',
     color: '#FFFFFF',
   },
@@ -174,27 +271,32 @@ const styles = StyleSheet.create({
     color: '#E50914',
   },
   sectionTitle: {
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: 'bold',
     color: '#FFFFFF',
     marginLeft: 16,
-    marginTop: 16,
-    marginBottom: 8,
+    marginTop: 24,
+    marginBottom: 16,
   },
   featuredContainer: {
     paddingLeft: 16,
-    marginBottom: 20,
+    marginBottom: 32,
   },
   matchesContainer: {
     paddingLeft: 16,
-    marginBottom: 20,
+    marginBottom: 32,
   },
   profileCard: {
     width: cardWidth,
-    height: 300,
+    height: 350,
     marginRight: 16,
-    borderRadius: 8,
+    borderRadius: 16,
     overflow: 'hidden',
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
   },
   profileImage: {
     width: '100%',
@@ -202,32 +304,53 @@ const styles = StyleSheet.create({
   },
   profileOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
     justifyContent: 'flex-end',
-    padding: 10,
+    padding: 16,
   },
   profileName: {
-    fontSize: 18,
+    fontSize: 24,
     fontWeight: 'bold',
     color: '#FFFFFF',
+    textShadowColor: 'rgba(0, 0, 0, 0.75)',
+    textShadowOffset: { width: -1, height: 1 },
+    textShadowRadius: 10,
   },
   profileLanguage: {
-    fontSize: 14,
+    fontSize: 16,
     color: '#E50914',
+    marginTop: 4,
+    textShadowColor: 'rgba(0, 0, 0, 0.75)',
+    textShadowOffset: { width: -1, height: 1 },
+    textShadowRadius: 10,
+  },
+  profileInfo: {
+    fontSize: 14,
+    color: '#FFFFFF',
+    marginTop: 4,
+    textShadowColor: 'rgba(0, 0, 0, 0.75)',
+    textShadowOffset: { width: -1, height: 1 },
+    textShadowRadius: 10,
+  },
+  profileInterests: {
+    fontSize: 12,
+    color: '#CCCCCC',
+    marginTop: 8,
+    textShadowColor: 'rgba(0, 0, 0, 0.75)',
+    textShadowOffset: { width: -1, height: 1 },
+    textShadowRadius: 10,
   },
   premiumBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(255, 215, 0, 0.3)',
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 12,
     position: 'absolute',
-    top: 10,
-    right: 10,
+    top: 16,
+    right: 16,
   },
   premiumText: {
-    color: '#FFD700',
+    color: '#FFFFFF',
     fontSize: 12,
     fontWeight: 'bold',
     marginLeft: 4,
@@ -235,56 +358,24 @@ const styles = StyleSheet.create({
   onlineIndicatorContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(76, 175, 80, 0.3)',
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 12,
     position: 'absolute',
-    top: 10,
-    left: 10,
+    top: 16,
+    left: 16,
   },
   onlineIndicator: {
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: '#4CAF50',
+    backgroundColor: '#FFFFFF',
     marginRight: 4,
   },
   onlineText: {
-    color: '#4CAF50',
+    color: '#FFFFFF',
     fontSize: 12,
     fontWeight: 'bold',
-  },
-  actionButtons: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    marginBottom: 20,
-  },
-  actionButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 12,
-    borderRadius: 25,
-    width: '40%',
-  },
-  swipeButton: {
-    backgroundColor: '#E50914',
-  },
-  messagesButton: {
-    backgroundColor: '#0077B5',
-  },
-  actionButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: 'bold',
-    marginLeft: 8,
-  },
-  loadingText: {
-    fontSize: 18,
-    color: '#FFFFFF',
-    textAlign: 'center',
-    marginTop: 20,
   },
   messagePreview: {
     flexDirection: 'row',
@@ -294,17 +385,17 @@ const styles = StyleSheet.create({
     borderBottomColor: '#333',
   },
   messageAvatar: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     marginRight: 16,
   },
   messageContent: {
     flex: 1,
   },
   messageName: {
-    fontSize: 16,
-    fontWeight: 'bold',
+    fontSize: 18,
+    fontWeight:  'bold',
     color: '#FFFFFF',
     marginBottom: 4,
   },
@@ -319,8 +410,63 @@ const styles = StyleSheet.create({
     backgroundColor: '#4CAF50',
     position: 'absolute',
     bottom: 16,
-    left: 54,
+    left: 60,
     borderWidth: 2,
     borderColor: '#000000',
+  },
+  toolbar: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    alignItems: 'center',
+    paddingVertical: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#333',
+  },
+  toolbarButton: {
+    alignItems: 'center',
+  },
+  toolbarButtonGradient: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  toolbarButtonLabel: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    marginTop: 4,
+  },
+  toolbarButtonLabelActive: {
+    color: '#E50914',
+  },
+  noContentContainer: {
+    margin: 16,
+    padding: 16,
+    borderRadius: 8,
+    overflow: 'hidden',
+  },
+  noContentText: {
+    fontSize: 16,
+    color: '#FFFFFF',
+    textAlign: 'center',
+    fontStyle: 'italic',
+  },
+  unreadBadge: {
+    backgroundColor: '#E50914',
+    borderRadius: 12,
+    width: 24,
+    height: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginLeft: 8,
+  },
+  unreadCount: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  section: {
+    marginBottom: 32,
   },
 });

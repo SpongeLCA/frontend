@@ -1,32 +1,30 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, Image, Animated, PanResponder, Dimensions, TouchableOpacity, Modal, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, Image, Animated, PanResponder, Dimensions, TouchableOpacity, Modal, ScrollView, StatusBar } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
-import { fakeProfiles, Profile } from '../data/fakeProfiles';
 import { useNavigation } from '@react-navigation/native';
+import { LinearGradient } from 'expo-linear-gradient';
+import { fakeProfiles, Profile, currentUser } from '../data/fakeProfiles';
+import { fakeMatches } from '../data/fakeInteractions';
 
-const SCREEN_WIDTH = Dimensions.get('window').width;
-const SCREEN_HEIGHT = Dimensions.get('window').height;
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
-export default function MatchingScreen() {
+export default function Component() {
   const navigation = useNavigation();
   const [currentIndex, setCurrentIndex] = useState(0);
   const [profiles, setProfiles] = useState<Profile[]>([]);
-  const [selectedProfile, setSelectedProfile] = useState<Profile | null>(null);
   const position = useRef(new Animated.ValueXY()).current;
   const [speakDateUsed, setSpeakDateUsed] = useState(false);
   const [isBoostActive, setIsBoostActive] = useState(false);
   const [boostTimeLeft, setBoostTimeLeft] = useState(0);
-  const [showBoostModal, setShowBoostModal] = useState(false);
-  const [showSpeakDateMessage, setShowSpeakDateMessage] = useState(false);
-  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const [showMatchNotification, setShowMatchNotification] = useState(false);
+  const [showProfileModal, setShowProfileModal] = useState(false);
 
   useEffect(() => {
-    const profilsMisAJour = fakeProfiles.map(profile => ({
-      ...profile,
-      isOnline: Math.random() < 0.5
-    }));
-    setProfiles(profilsMisAJour);
+    const availableProfiles = fakeProfiles.filter(
+      profile => !fakeMatches.some(match => match.includes(profile.id))
+    );
+    setProfiles(availableProfiles);
   }, []);
 
   useEffect(() => {
@@ -44,7 +42,6 @@ export default function MatchingScreen() {
   const activateBoost = () => {
     setIsBoostActive(true);
     setBoostTimeLeft(30 * 60); // 30 minutes
-    setShowBoostModal(true);
   };
 
   const formatTime = (seconds: number) => {
@@ -76,12 +73,6 @@ export default function MatchingScreen() {
   const dislikeOpacity = position.x.interpolate({
     inputRange: [-SCREEN_WIDTH / 2, 0, SCREEN_WIDTH / 2],
     outputRange: [1, 0, 0],
-    extrapolate: 'clamp'
-  });
-
-  const nextCardOpacity = position.x.interpolate({
-    inputRange: [-SCREEN_WIDTH / 2, 0, SCREEN_WIDTH / 2],
-    outputRange: [1, 0, 1],
     extrapolate: 'clamp'
   });
 
@@ -150,28 +141,20 @@ export default function MatchingScreen() {
       setCurrentIndex(currentIndex + 1);
       position.setValue({ x: 0, y: 0 });
       setSpeakDateUsed(false);
-      displaySpeakDateMessage();
+      setShowMatchNotification(true);
+      setTimeout(() => setShowMatchNotification(false), 3000);
     });
-  };
-  
-  const displaySpeakDateMessage = () => {
-    setShowSpeakDateMessage(true);
-    Animated.sequence([
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 300,
-        useNativeDriver: true,
-      }),
-      Animated.delay(2000),
-      Animated.timing(fadeAnim, {
-        toValue: 0,
-        duration: 300,
-        useNativeDriver: true,
-      }),
-    ]).start(() => setShowSpeakDateMessage(false));
   };
 
   const renderUsers = () => {
+    if (profiles.length === 0) {
+      return (
+        <View style={styles.noProfilesContainer}>
+          <Text style={styles.noProfilesText}>Aucun profil disponible</Text>
+        </View>
+      );
+    }
+
     return profiles.map((item, i) => {
       if (i < currentIndex) {
         return null;
@@ -189,10 +172,23 @@ export default function MatchingScreen() {
               <Text style={styles.dislikeText}>PASSER</Text>
             </Animated.View>
             <Image source={{ uri: item.images[0] }} style={styles.image} />
+            <LinearGradient
+              colors={['transparent', 'rgba(0,0,0,0.9)']}
+              style={styles.gradient}
+            />
             <View style={styles.infoContainer}>
               <Text style={styles.name}>{item.name}, {item.age}</Text>
               <Text style={styles.language}>{item.languages[0].language} - {item.languages[0].level}</Text>
-              <Text style={styles.bio}>{item.bio}</Text>
+              <View style={styles.interestsContainer}>
+                {item.culturalInterests.slice(0, 3).map((interest, index) => (
+                  <View key={index} style={styles.interestBadge}>
+                    <Text style={styles.interestText}>{interest}</Text>
+                  </View>
+                ))}
+              </View>
+              <TouchableOpacity style={styles.viewProfileButton} onPress={() => setShowProfileModal(true)}>
+                <Text style={styles.viewProfileButtonText}>Voir le profil</Text>
+              </TouchableOpacity>
             </View>
             {item.isPremium && (
               <View style={styles.premiumBadge}>
@@ -206,14 +202,6 @@ export default function MatchingScreen() {
                 <Text style={styles.onlineText}>En ligne</Text>
               </View>
             )}
-            <TouchableOpacity
-              style={styles.infoButton}
-              onPress={() => setSelectedProfile(item)}
-            >
-              <View style={styles.infoCircle}>
-                <Feather name="info" size={24} color="#FFFFFF" />
-              </View>
-            </TouchableOpacity>
           </Animated.View>
         );
       } else {
@@ -221,36 +209,17 @@ export default function MatchingScreen() {
           <Animated.View
             key={item.id}
             style={[{
-              opacity: nextCardOpacity,
               transform: [{ scale: nextCardScale }],
-            }, styles.animatedCard]}
+            }, styles.animatedCard, styles.nextCard]}
           >
             <Image source={{ uri: item.images[0] }} style={styles.image} />
+            <LinearGradient
+              colors={['transparent', 'rgba(0,0,0,0.9)']}
+              style={styles.gradient}
+            />
             <View style={styles.infoContainer}>
               <Text style={styles.name}>{item.name}, {item.age}</Text>
-              <Text style={styles.language}>{item.languages[0].language} - {item.languages[0].level}</Text>
-              <Text style={styles.bio}>{item.bio}</Text>
             </View>
-            {item.isPremium && (
-              <View style={styles.premiumBadge}>
-                <Feather name="star" size={16} color="#FFD700" />
-                <Text style={styles.premiumText}>Premium</Text>
-              </View>
-            )}
-            {item.isOnline && (
-              <View style={styles.onlineIndicator}>
-                <View style={styles.onlineDot} />
-                <Text style={styles.onlineText}>En ligne</Text>
-              </View>
-            )}
-            <TouchableOpacity
-              style={styles.infoButton}
-              onPress={() => setSelectedProfile(item)}
-            >
-              <View style={styles.infoCircle}>
-                <Feather name="info" size={24} color="#FFFFFF" />
-              </View>
-            </TouchableOpacity>
           </Animated.View>
         );
       }
@@ -259,16 +228,22 @@ export default function MatchingScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
+      <StatusBar barStyle="light-content" />
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.navigate('Home')}>
+        <TouchableOpacity onPress={() => navigation.navigate('Home')} style={styles.backButton}>
           <Feather name="arrow-left" size={24} color="#FFFFFF" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Découvrir</Text>
+        <View style={styles.logoContainer}>
+          <Text style={styles.headerTitle}>
+            <Text style={styles.headerTitleSpeak}>Speak</Text>
+            <Text style={styles.headerTitleDate}>Date</Text>
+          </Text>
+        </View>
         <TouchableOpacity
           style={[styles.boostButton, isBoostActive && styles.boostButtonActive]}
           onPress={activateBoost}
         >
-          <Feather name="zap" size={24} color="#E50914" />
+          <Feather name="zap" size={24} color={isBoostActive ? "#FFFFFF" : "#E50914"} />
           {isBoostActive && (
             <Text style={styles.boostTimeLeft}>{formatTime(boostTimeLeft)}</Text>
           )}
@@ -278,83 +253,63 @@ export default function MatchingScreen() {
         {renderUsers()}
       </View>
       <View style={styles.buttonsContainer}>
-        <TouchableOpacity onPress={swipeLeft}>
-          <Feather name="x" size={30} color="#FF6B6B" style={styles.button} />
+        <TouchableOpacity onPress={swipeLeft} style={styles.actionButton}>
+          <Feather name="x" size={30} color="#FF6B6B" />
         </TouchableOpacity>
-        <TouchableOpacity onPress={handleSpeakDate} disabled={speakDateUsed}>
-          <View style={[styles.speakDateButton, speakDateUsed && styles.speakDateButtonDisabled]}>
-            <Text style={styles.speakDateTextS}>S</Text>
-            <Text style={styles.speakDateTextD}>D</Text>
-          </View>
+        <TouchableOpacity onPress={handleSpeakDate} disabled={speakDateUsed} style={styles.speakDateButton}>
+          <Text style={styles.speakDateTextS}>S</Text>
+          <Text style={styles.speakDateTextD}>D</Text>
         </TouchableOpacity>
-        <TouchableOpacity onPress={swipeRight}>
-          <Feather name="heart" size={30} color="#4ECDC4" style={styles.button} />
+        <TouchableOpacity onPress={swipeRight} style={styles.actionButton}>
+          <Feather name="heart" size={30} color="#4ECDC4" />
         </TouchableOpacity>
       </View>
-
-      {showSpeakDateMessage && (
-        <Animated.View style={[styles.speakDateMessage, { opacity: fadeAnim }]}>
-          <Text style={styles.speakDateMessageText}>SpeakDate envoyé !</Text>
+      {showMatchNotification && (
+        <Animated.View style={styles.matchNotification}>
+          <Text style={styles.matchNotificationText}>C'est un match SpeakDate !</Text>
         </Animated.View>
       )}
-
       <Modal
         animationType="slide"
         transparent={true}
-        visible={showBoostModal}
-        onRequestClose={() => setShowBoostModal(false)}
+        visible={showProfileModal}
+        onRequestClose={() => setShowProfileModal(false)}
       >
         <View style={styles.modalContainer}>
-          <View style={styles.modalContent}>
-            <Feather name="zap" size={50} color="#E50914" />
-            <Text style={styles.modalTitle}>Boost activé !</Text>
-            <Text style={styles.modalText}>
-              Ton profil est maintenant mis en avant pour les 30 prochaines minutes.
-              Profites-en pour trouver plus de partenaires linguistiques !
-            </Text>
-            <TouchableOpacity
-              style={styles.modalButton}
-              onPress={() => setShowBoostModal(false)}
-            >
-              <Text style={styles.modalButtonText}>Compris</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
-
-      <Modal
-        animationType="slide"
-        transparent={true}
-        visible={!!selectedProfile}
-        onRequestClose={() => setSelectedProfile(null)}
-      >
-        <View style={styles.modalContainer}>
-          <ScrollView style={styles.profileModalContent}>
-            {selectedProfile && (
+          <ScrollView style={styles.modalContent}>
+            {profiles[currentIndex] && (
               <>
-                <Image source={{ uri: selectedProfile.images[0] }} style={styles.profileModalImage} />
-                <View style={styles.profileModalInfo}>
-                  <Text style={styles.profileModalName}>{selectedProfile.name}, {selectedProfile.age}</Text>
-                  {selectedProfile.isOnline && (
-                    <View style={styles.profileModalOnlineIndicator}>
-                      <View style={styles.onlineDot} />
-                      <Text style={styles.onlineText}>En ligne</Text>
-                    </View>
-                  )}
-                  <Text style={styles.profileModalLanguage}>
-                    {selectedProfile.languages.map(lang => `${lang.language} - ${lang.level}`).join(', ')}
+                <Image source={{ uri: profiles[currentIndex].images[0] }} style={styles.modalUserImage} />
+                <LinearGradient
+                  colors={['transparent', 'rgba(20,20,20,0.8)', '#141414']}
+                  style={styles.modalGradient}
+                />
+                <View style={styles.modalUserInfo}>
+                  <Text style={styles.modalUserName}>{profiles[currentIndex].name}, {profiles[currentIndex].age}</Text>
+                  <Text style={styles.modalUserLanguage}>
+                    {profiles[currentIndex].languages.map(lang => `${lang.language} - ${lang.level}`).join(', ')}
                   </Text>
-                  <Text style={styles.profileModalBio}>{selectedProfile.bio}</Text>
-                  <Text style={styles.profileModalInterests}>Intérêts : {selectedProfile.interests.join(', ')}</Text>
+                  <Text style={styles.modalUserOrigin}>Origine : {profiles[currentIndex].originCountry}</Text>
+                  <Text style={styles.modalUserDestination}>Destination : {profiles[currentIndex].destinationCountry}</Text>
+                  <Text style={styles.modalSectionTitle}>Intérêts culturels :</Text>
+                  <View style={styles.modalInterestsContainer}>
+                    {profiles[currentIndex].culturalInterests.map((interest, index) => (
+                      <View key={index} style={styles.modalInterestBadge}>
+                        <Text style={styles.modalInterestText}>{interest}</Text>
+                      </View>
+                    ))}
+                  </View>
+                  <Text style={styles.modalSectionTitle}>Bio :</Text>
+                  <Text style={styles.modalUserBio}>{profiles[currentIndex].bio}</Text>
                 </View>
-                <TouchableOpacity
-                  style={styles.closeProfileButton}
-                  onPress={() => setSelectedProfile(null)}
-                >
-                  <Text style={styles.closeProfileButtonText}>Fermer</Text>
-                </TouchableOpacity>
               </>
             )}
+            <TouchableOpacity
+              style={styles.closeModalButton}
+              onPress={() => setShowProfileModal(false)}
+            >
+              <Text style={styles.closeModalButtonText}>Fermer</Text>
+            </TouchableOpacity>
           </ScrollView>
         </View>
       </Modal>
@@ -362,7 +317,7 @@ export default function MatchingScreen() {
   );
 }
 
-const styles =   StyleSheet.create({
+const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#000000',
@@ -371,42 +326,51 @@ const styles =   StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 20,
+    padding: 16,
     borderBottomWidth: 1,
-    borderBottomColor: '#333',
+    borderBottomColor: 'rgba(255,255,255,0.1)',
   },
-  headerTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
+  backButton: {
+    padding: 8,
   },
-  boostButton: {
-    backgroundColor: '#141414',
-    padding: 10,
-    borderRadius: 20,
-    flexDirection: 'row',
+  logoContainer: {
+    flex: 1,
     alignItems: 'center',
   },
-  boostButtonActive: {
-    backgroundColor: '#141414',
+  headerTitle: {
+    fontSize: 28,
+    fontWeight: 'bold',
   },
-  boostTimeLeft: {
+  headerTitleSpeak: {
+    color: '#FFFFFF',
+  },
+  headerTitleDate: {
     color: '#E50914',
-    marginLeft: 5,
-    fontSize: 12,
   },
   cardContainer: {
     flex: 1,
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent:  'center',
   },
   animatedCard: {
-    height: SCREEN_HEIGHT - 200,
+    height: SCREEN_HEIGHT - 220,
     width: SCREEN_WIDTH - 40,
     padding: 10,
     position: 'absolute',
     borderRadius: 20,
     backgroundColor: '#141414',
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 5,
+    },
+    shadowOpacity: 0.34,
+    shadowRadius: 6.27,
+    elevation: 10,
+  },
+  nextCard: {
+    top: 10,
+    zIndex: -1,
   },
   image: {
     flex: 1,
@@ -415,39 +379,144 @@ const styles =   StyleSheet.create({
     resizeMode: 'cover',
     borderRadius: 20,
   },
+  gradient: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: '50%',
+    borderBottomLeftRadius: 20,
+    borderBottomRightRadius: 20,
+  },
   infoContainer: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
     padding: 20,
-    backgroundColor: 'rgba(0,0,0,0.8)',
     borderBottomLeftRadius: 20,
     borderBottomRightRadius: 20,
   },
   name: {
-    fontSize: 24,
+    fontSize: 28,
     fontWeight: 'bold',
     color: '#FFFFFF',
+    textShadowColor: 'rgba(0, 0, 0, 0.75)',
+    textShadowOffset: {width: -1, height: 1},
+    textShadowRadius: 10,
   },
   language: {
     fontSize: 18,
     color: '#E50914',
     marginBottom: 5,
+    textShadowColor: 'rgba(0, 0, 0, 0.75)',
+    textShadowOffset: {width: -1, height: 1},
+    textShadowRadius: 10,
   },
-  bio: {
-    fontSize: 16,
-    color: '#CCCCCC',
+  interestsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginTop: 5,
+  },
+  interestBadge: {
+    backgroundColor: 'rgba(229, 9, 20, 0.7)',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 15,
+    marginRight: 5,
+    marginBottom: 5,
+  },
+  interestText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  viewProfileButton: {
+    backgroundColor: '#E50914',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 20,
+    alignSelf: 'flex-start',
+    marginTop: 10,
+  },
+  viewProfileButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: 'bold',
   },
   buttonsContainer: {
     flexDirection: 'row',
     justifyContent: 'space-around',
+    alignItems: 'center',
     padding: 20,
   },
-  button: {
-    padding: 20,
-    backgroundColor: '#141414',
+  actionButton: {
+    width: 60,
+    height: 60,
     borderRadius: 30,
+    backgroundColor: '#141414',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  speakDateButton: {
+    width: 70,
+    height: 70,
+    borderRadius: 35,
+    backgroundColor: '#141414',
+    justifyContent: 'center',
+    alignItems: 'center',
+    flexDirection: 'row',
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  speakDateTextS: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+  },
+  speakDateTextD: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#E50914',
+  },
+  boostButton: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: '#141414',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  boostButtonActive: {
+    backgroundColor: '#E50914',
+  },
+  boostTimeLeft: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    position: 'absolute',
+    bottom: 5,
   },
   likeContainer: {
     position: 'absolute',
@@ -468,88 +537,16 @@ const styles =   StyleSheet.create({
     fontSize: 32,
     fontWeight: '800',
     padding: 10,
+    transform: [{rotate: '-30deg'}],
   },
   dislikeText: {
-    borderWidth:  1,
+    borderWidth: 1,
     borderColor: '#FF6B6B',
     color: '#FF6B6B',
     fontSize: 32,
     fontWeight: '800',
     padding: 10,
-  },
-  speakDateButton: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: '#141414',
-    justifyContent: 'center',
-    alignItems: 'center',
-    flexDirection: 'row',
-  },
-  speakDateButtonDisabled: {
-    opacity: 0.5,
-  },
-  speakDateTextS: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
-  },
-  speakDateTextD: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#E50914',
-  },
-  speakDateMessage: {
-    position: 'absolute',
-    top: 100,
-    left: 0,
-    right: 0,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(20, 20, 20, 0.8)',
-    paddingVertical: 10,
-  },
-  speakDateMessageText: {
-    color: '#FFFFFF',
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  modalContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.8)',
-  },
-  modalContent: {
-    backgroundColor: '#141414',
-    borderRadius: 20,
-    padding: 30,
-    alignItems: 'center',
-    elevation: 5,
-  },
-  modalTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
-    marginTop: 20,
-    marginBottom: 10,
-  },
-  modalText: {
-    fontSize: 16,
-    color: '#CCCCCC',
-    textAlign: 'center',
-    marginBottom: 20,
-  },
-  modalButton: {
-    backgroundColor: '#E50914',
-    paddingVertical: 10,
-    paddingHorizontal: 20,
-    borderRadius: 5,
-  },
-  modalButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: 'bold',
+    transform: [{rotate: '30deg'}],
   },
   premiumBadge: {
     position: 'absolute',
@@ -591,71 +588,116 @@ const styles =   StyleSheet.create({
     fontSize: 14,
     fontWeight: 'bold',
   },
-  infoButton: {
+  matchNotification: {
     position: 'absolute',
-    bottom: 80,
+    top: 100,
+    left: 20,
     right: 20,
-    zIndex: 1000,
-  },
-  infoCircle: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(229, 9, 20, 0.8)',
-    justifyContent: 'center',
+    backgroundColor: 'rgba(229, 9, 20, 0.9)',
+    padding: 15,
+    borderRadius: 10,
     alignItems: 'center',
   },
-  profileModalContent: {
+  matchNotificationText: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  modalContainer: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+  },
+  modalContent: {
+    flex: 1,
     backgroundColor: '#141414',
-    borderRadius: 20,
-    padding: 20,
-    width: SCREEN_WIDTH - 40,
-    maxHeight: SCREEN_HEIGHT - 100,
   },
-  profileModalImage: {
+  modalUserImage: {
     width: '100%',
-    height: 300,
-    borderRadius: 20,
-    marginBottom: 20,
+    height: 400,
+    resizeMode: 'cover',
   },
-  profileModalInfo: {
-    marginBottom: 20,
+  modalGradient: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: 200,
   },
-  profileModalName: {
-    fontSize: 28,
+  modalUserInfo: {
+    padding: 20,
+  },
+  modalUserName: {
+    fontSize: 32,
     fontWeight: 'bold',
     color: '#FFFFFF',
     marginBottom: 10,
   },
-  profileModalOnlineIndicator: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  profileModalLanguage: {
+  modalUserLanguage: {
     fontSize: 18,
     color: '#E50914',
     marginBottom: 10,
   },
-  profileModalBio: {
+  modalUserOrigin: {
     fontSize: 16,
     color: '#CCCCCC',
-    marginBottom: 10,
+    marginBottom: 5,
   },
-  profileModalInterests: {
+  modalUserDestination: {
     fontSize: 16,
-    color: '#FFFFFF',
+    color: '#CCCCCC',
+    marginBottom: 15,
   },
-  closeProfileButton: {
-    backgroundColor: '#E50914',
-    paddingVertical: 10,
-    borderRadius: 20,
-    alignItems: 'center',
-    marginTop: 20,
-  },
-  closeProfileButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
+  modalSectionTitle: {
+    fontSize: 20,
     fontWeight: 'bold',
+    color: '#FFFFFF',
+    marginTop: 10,
+    marginBottom: 5,
+  },
+  modalInterestsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginBottom: 15,
+  },
+  modalInterestBadge: {
+    backgroundColor: 'rgba(229, 9, 20, 0.7)',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 15,
+    marginRight: 5,
+    marginBottom: 5,
+  },
+  modalInterestText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+  },
+  modalUserBio: {
+    fontSize: 16,
+    color: '#CCCCCC',
+    marginBottom: 20,
+    lineHeight: 24,
+  },
+  closeModalButton: {
+    backgroundColor: '#E50914',
+    paddingVertical: 15,
+    paddingHorizontal: 20,
+    borderRadius: 10,
+    alignSelf: 'center',
+    marginVertical: 20,
+  },
+  closeModalButtonText: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  noProfilesContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  noProfilesText: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    textAlign: 'center',
   },
 });

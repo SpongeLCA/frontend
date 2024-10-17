@@ -1,30 +1,17 @@
 import React from 'react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { NavigationContainer } from '@react-navigation/native';
-import { createStackNavigator } from '@react-navigation/stack';
-import { StatusBar } from 'expo-status-bar';
-import { ThemeProvider } from '@react-navigation/native'; // Import ThemeProvider from react-navigation
+import { ThemeProvider } from '@react-navigation/native';
+import { StatusBar } from 'react-native';
+import AppNavigator from './src/navigation/AppNavigator';
 
-// Import screens
-import HomeScreen from './src/screens/HomeScreen';
-import CreateProfileScreen from './src/screens/CreateProfileScreen';
-import MatchingScreen from './src/screens/MatchingScreen';
-import MessagingScreen from './src/screens/MessagingScreen';
-import ProfileScreen from './src/screens/ProfileScreen';
-import UserProfileScreen from './src/screens/UserProfileScreen';
-import ConversationScreen from './src/screens/ConversationScreen';
-
-const Stack = createStackNavigator();
-
-// Define a basic theme
-const MyTheme = {
+const darkTheme = {
   dark: true,
   colors: {
     primary: '#E50914',
-    background: '#000000',
-    card: '#121212',
+    background: '#141414',
+    card: '#1F1F1F',
     text: '#FFFFFF',
-    border: '#272729',
+    border: '#2C2C2C',
     notification: '#E50914',
   },
 };
@@ -32,24 +19,9 @@ const MyTheme = {
 export default function App() {
   return (
     <SafeAreaProvider>
-      <ThemeProvider value={MyTheme}>
-        <NavigationContainer theme={MyTheme}>
-          <StatusBar style="light" />
-          <Stack.Navigator
-            screenOptions={{
-              headerShown: false,
-              cardStyle: { backgroundColor: '#000' },
-            }}
-          >
-            <Stack.Screen name="CreateProfile" component={CreateProfileScreen} />
-            <Stack.Screen name="Home" component={HomeScreen} />
-            <Stack.Screen name="Matching" component={MatchingScreen} />
-            <Stack.Screen name="Messaging" component={MessagingScreen} />
-            <Stack.Screen name="Profile" component={ProfileScreen} />
-            <Stack.Screen name="UserProfile" component={UserProfileScreen} />
-            <Stack.Screen name="Conversation" component={ConversationScreen} />
-          </Stack.Navigator>
-        </NavigationContainer>
+      <ThemeProvider value={darkTheme}>
+        <StatusBar barStyle="light-content" backgroundColor="#141414" />
+        <AppNavigator />
       </ThemeProvider>
     </SafeAreaProvider>
   );
